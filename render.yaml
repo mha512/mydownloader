@@ -3,7 +3,7 @@ services:
     name: vidzflow-web
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: gunicorn --bind 0.0.0.0:$PORT --workers 2 --access-logfile - app:app
+    dockerCommand: sh -c "alembic upgrade head && gunicorn --bind 0.0.0.0:$PORT --workers 2 --access-logfile - app:app"
     healthCheckPath: /health
     envVars:
       - key: DATABASE_URL
@@ -14,12 +14,24 @@ services:
         sync: false
       - key: VIDZFLOW_MAX_REQUEST_BYTES
         value: "65536"
+      - key: RATE_LIMIT_CAPACITY
+        value: "20"
+      - key: RATE_LIMIT_REFILL_SECONDS
+        value: "60"
+      - key: DB_POOL_SIZE
+        value: "5"
+      - key: DB_MAX_OVERFLOW
+        value: "5"
+      - key: DB_POOL_TIMEOUT
+        value: "30"
+      - key: DB_POOL_RECYCLE
+        value: "1800"
 
   - type: worker
     name: vidzflow-worker
     runtime: docker
     dockerfilePath: ./Dockerfile
-    dockerCommand: python worker.py
+    dockerCommand: sh -c "alembic upgrade head && python worker.py"
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -45,12 +57,20 @@ services:
         value: "300"
       - key: WORKER_POLL_SECONDS
         value: "2"
+      - key: WORKER_CONCURRENCY
+        value: "1"
+      - key: MAX_CONCURRENT_DOWNLOADS
+        value: "2"
       - key: WORKER_JOB_TIMEOUT_SECONDS
         value: "900"
       - key: WORKER_MAX_ATTEMPTS
         value: "3"
       - key: MAX_DOWNLOAD_BYTES
         value: "524288000"
+      - key: MAX_TEMP_DISK_BYTES
+        value: "1073741824"
+      - key: MIN_FREE_DISK_BYTES
+        value: "268435456"
 
 databases:
   - name: vidzflow-db

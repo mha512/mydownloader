@@ -1,0 +1,51 @@
+<section class="card home-card" aria-labelledby="download-heading">
+  <div class="section-kicker">Online Downloader</div>
+  <h2 class="section-heading" id="download-heading">Paste a video URL</h2>
+  <p class="section-copy">Enter a supported public URL. ToxicDownloader will fetch the media details first, then show its thumbnail and available quality options.</p>
+
+  <div class="form-grid">
+    <div class="field">
+      <label for="single-url">Video URL</label>
+      <input class="input" id="single-url" type="url" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=..." />
+    </div>
+    <button class="btn" id="fetch-button" type="button">
+      <span id="fetch-spinner" class="spinner" style="display:none"></span>
+      <span id="fetch-text">Fetch Video</span>
+    </button>
+  </div>
+
+  <div class="meta-copy">Supported: YouTube, TikTok, Instagram and Facebook. Only download content you have permission to use.</div>
+  <div id="status" aria-live="polite"></div>
+
+  <div class="preview" id="preview">
+    <div class="thumb-wrap">
+      <img id="preview-thumb" alt="Video thumbnail preview" style="display:none" />
+      <div class="thumb-placeholder" id="thumb-placeholder">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 8 6 4-6 4V8Z"/><rect x="3" y="5" width="18" height="14" rx="4"/></svg>
+      </div>
+    </div>
+    <div class="preview-body">
+      <div class="preview-title" id="preview-title">Video</div>
+      <div class="preview-meta" id="preview-meta"></div>
+      <div class="quality-title" id="quality-title">Download status</div>
+      <div class="qualities" id="qualities"></div>
+      <div class="preview-actions">
+        <button class="btn" id="quality-download" type="button" disabled>Download Selected Format</button>
+        <button class="btn secondary" id="another-button" type="button">Download Another</button>
+      </div>
+      <div class="download-result" id="download-result">
+        <strong id="download-result-title">Download started</strong>
+        <p id="download-result-text">Your selected file is being downloaded.</p>
+        <div class="download-progress" id="download-progress">
+          <div class="progress-track"><div class="progress-bar" id="download-progress-bar"></div></div>
+          <div class="progress-text"><span id="download-progress-label">Preparing...</span><span id="download-progress-percent">--</span></div>
+        </div>
+        <div class="permission-note" id="permission-note"></div>
+        <div class="recovery-actions" id="recovery-actions" style="display:none">
+          <button class="btn secondary" id="retry-button" type="button">Retry</button>
+          <button class="btn secondary" id="cancel-button" type="button">Cancel</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

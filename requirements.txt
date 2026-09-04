@@ -7,3 +7,4 @@ boto3>=1.35,<2
 yt-dlp>=2024.12
 gunicorn>=23,<24
 python-dotenv>=1.0,<2
+alembic>=1.14,<2

@@ -10,12 +10,15 @@ import sys
 import tempfile
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import boto3
 import yt_dlp
-from sqlalchemy import select
+from botocore.exceptions import BotoCoreError, ClientError
+from sqlalchemy import func, select, text
+from yt_dlp.utils import DownloadError
 
 from config import (
     S3_ACCESS_KEY_ID,
@@ -27,17 +30,166 @@ from config import (
     JOB_RETENTION_SECONDS,
     CLEANUP_INTERVAL_SECONDS,
     WORKER_JOB_TIMEOUT_SECONDS,
-    WORKER_MAX_ATTEMPTS,
     MAX_DOWNLOAD_BYTES,
+    MAX_CONCURRENT_DOWNLOADS,
+    MAX_TEMP_DISK_BYTES,
+    MIN_FREE_DISK_BYTES,
     FFMPEG_PATH,
     WORKER_POLL_SECONDS,
+    WORKER_CONCURRENCY,
+    WORKER_MAX_ATTEMPTS,
+    WORKER_RETRY_BACKOFF_SECONDS,
+    WORKER_HEARTBEAT_SECONDS,
 )
 from database import SessionLocal, init_db
-from models import Job
+from models import ACTIVE_JOB_STATUSES, Job, ResourceLease, WorkerHeartbeat
+from url_validation import has_public_host
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
+RESOURCE_LOCK_KEY = 917345
+WORKER_ID = os.environ.get('WORKER_INSTANCE_ID', uuid.uuid4().hex)
+
+
+def is_transient_error(error):
+    if isinstance(error, (DownloadSizeExceeded, ValueError, TypeError)):
+        return False
+    if isinstance(error, ClientError):
+        status = error.response.get(
+            'ResponseMetadata', {}).get('HTTPStatusCode')
+        return status in {403, 429, 500, 502, 503, 504}
+    if isinstance(error, (BotoCoreError, ConnectionError, TimeoutError)):
+        return True
+    if isinstance(error, DownloadError):
+        message = str(error).lower()
+        return any(marker in message for marker in (
+            'http error 403', 'http error 429', 'http error 500',
+            'http error 502', 'http error 503', 'http error 504',
+            'timed out', 'temporarily unavailable', 'connection reset',
+        ))
+    return False
+
+
+def record_job_failure(job_id, error):
+    should_retry = False
+    attempts = 0
+    with SessionLocal.begin() as session:
+        job = session.get(Job, job_id)
+        if not job:
+            return None
+        attempts = job.attempts
+        should_retry = is_transient_error(error) and (
+            attempts < WORKER_MAX_ATTEMPTS
+        )
+        if should_retry:
+            job.status = 'queued'
+            job.progress = 0
+            job.error_message = 'Temporary problem. Retrying automatically.'
+        else:
+            job.status = 'failed'
+            job.error_message = (
+                str(error) if isinstance(error, DownloadSizeExceeded)
+                else 'The worker could not process this download.'
+            )
+    if should_retry:
+        return min(
+            60, WORKER_RETRY_BACKOFF_SECONDS * 2 ** max(0, attempts - 1)
+        )
+    return None
+
+
+def release_resource_lease(job_id):
+    with SessionLocal.begin() as session:
+        session.query(ResourceLease).filter_by(job_id=job_id).delete()
+
+
+def write_heartbeat():
+    with SessionLocal.begin() as session:
+        heartbeat = session.get(WorkerHeartbeat, WORKER_ID)
+        if heartbeat:
+            heartbeat.heartbeat_at = datetime.now(timezone.utc)
+        else:
+            session.add(WorkerHeartbeat(
+                worker_id=WORKER_ID,
+                heartbeat_at=datetime.now(timezone.utc),
+            ))
+
+
+class DownloadSizeExceeded(RuntimeError):
+    """Raised before downloading when media cannot fit the configured limit."""
+
+
+def format_bytes(byte_count):
+    value = float(byte_count)
+    for unit in ('B', 'KB', 'MB', 'GB'):
+        if value < 1024 or unit == 'GB':
+            return f'{value:.1f} {unit}' if unit != 'B' else f'{int(value)} B'
+        value /= 1024
+
+
+def format_size(item):
+    return item.get('filesize') or item.get('filesize_approx')
+
+
+def estimated_download_size(info, selected_format):
+    formats = info.get('formats', [])
+    if selected_format == 'best':
+        candidates = [item for item in formats if item.get(
+            'vcodec') not in (None, 'none')]
+        if not candidates:
+            return None
+        selected = max(candidates, key=lambda item: item.get('quality') or -1)
+    else:
+        selected = next(
+            (item for item in formats if str(
+                item.get('format_id')) == str(selected_format)),
+            None,
+        )
+        if not selected:
+            return None
+
+    video_size = format_size(selected)
+    if selected.get('acodec') not in (None, 'none'):
+        return video_size
+    audio_formats = [
+        item for item in formats
+        if item.get('vcodec') == 'none' and item.get('acodec') not in (None, 'none')
+    ]
+    audio_size = max(
+        (format_size(item) or 0 for item in audio_formats), default=0)
+    if video_size is None:
+        return None
+    return video_size + audio_size
+
+
+def ensure_download_size(info, selected_format):
+    if selected_format != 'best' and not any(
+        str(item.get('format_id')) == str(selected_format)
+        for item in info.get('formats', [])
+    ):
+        raise RuntimeError('The selected format is no longer available.')
+    estimated_size = estimated_download_size(info, selected_format)
+    if estimated_size and estimated_size > MAX_DOWNLOAD_BYTES:
+        raise DownloadSizeExceeded(
+            f'This video is estimated at {format_bytes(estimated_size)}, '
+            f'which is larger than the {format_bytes(MAX_DOWNLOAD_BYTES)} download limit.'
+        )
+
+
+def format_display_key(item):
+    return (
+        item.get('height'), item.get('ext'), item.get('resolution'),
+        item.get('fps'),
+    )
+
+
+def format_quality_key(item):
+    return (
+        item.get('quality') or -1,
+        item.get('tbr') or -1,
+        format_size(item) or -1,
+    )
 
 
 def media_tool_directory():
@@ -100,18 +252,36 @@ def claim_job():
     with SessionLocal.begin() as session:
         stale_jobs = session.scalars(
             select(Job).where(
-                Job.status == 'processing',
+                Job.status.in_(ACTIVE_JOB_STATUSES),
                 Job.updated_at < datetime.now(timezone.utc) - timedelta(
                     seconds=WORKER_JOB_TIMEOUT_SECONDS
                 )
             )
         ).all()
         for stale_job in stale_jobs:
-            if stale_job.attempts < WORKER_MAX_ATTEMPTS:
-                stale_job.status = 'queued'
-            else:
-                stale_job.status = 'failed'
-                stale_job.error_message = 'The worker timed out repeatedly.'
+            stale_job.status = 'failed'
+            stale_job.error_message = (
+                'The worker timed out. Please start the download again.'
+            )
+            session.query(ResourceLease).filter_by(
+                job_id=stale_job.id).delete()
+
+        if session.get_bind().dialect.name == 'postgresql':
+            session.execute(text(
+                f'SELECT pg_advisory_xact_lock({RESOURCE_LOCK_KEY})'
+            ))
+        reserved_bytes = session.scalar(
+            select(func.coalesce(func.sum(ResourceLease.reserved_bytes), 0))
+        ) or 0
+        active_leases = session.scalar(
+            select(func.count()).select_from(ResourceLease)
+        ) or 0
+        reservation = MAX_DOWNLOAD_BYTES * 2
+        free_bytes = shutil.disk_usage(tempfile.gettempdir()).free
+        if (active_leases >= MAX_CONCURRENT_DOWNLOADS
+            or reserved_bytes + reservation > MAX_TEMP_DISK_BYTES
+                or free_bytes < reservation + MIN_FREE_DISK_BYTES):
+            return None
 
         job = session.scalar(
             select(Job)
@@ -122,6 +292,10 @@ def claim_job():
         )
         if not job:
             return None
+        session.add(ResourceLease(
+            job_id=job.id,
+            reserved_bytes=reservation,
+        ))
         job.status = 'processing'
         job.attempts += 1
         return job.id
@@ -143,7 +317,7 @@ def cleanup_expired_jobs():
                     'queued',
                 ]),
                 Job.updated_at < cutoff,
-            ).limit(50)
+            ).with_for_update(skip_locked=True).limit(50)
         ).all()
         for job in jobs:
             if job.status == 'ready' and job.filename:
@@ -205,68 +379,121 @@ def process_job(job_id):
 
     work_dir = Path(tempfile.mkdtemp(prefix=f'vidzflow-{job_id}-'))
     try:
+        if not has_public_host(source_url):
+            raise RuntimeError('The source host is not publicly reachable.')
         media_tools, _, ffprobe = require_media_tools()
         output_template = str(work_dir / '%(title).120s-%(id)s.%(ext)s')
         last_progress_update = [0.0]
+        downloaded_by_file = {}
+
+        def update_job(status=None, progress=None, total_bytes=None):
+            with SessionLocal.begin() as session:
+                job = session.get(Job, job_id)
+                if not job or job.status == 'failed':
+                    return
+                if status:
+                    job.status = status
+                if progress is not None:
+                    job.progress = min(max(int(progress), 0), 99)
+                if total_bytes is not None:
+                    job.total_bytes = total_bytes
+
+        update_job('extracting', 1)
 
         def progress_hook(event):
             if event.get('status') != 'downloading':
                 return
+            downloaded = event.get('downloaded_bytes', 0)
+            file_key = event.get('filename') or event.get(
+                'format_id') or 'unknown'
+            downloaded_by_file[file_key] = max(
+                downloaded_by_file.get(file_key, 0), downloaded)
+            accumulated = sum(downloaded_by_file.values())
+            if accumulated > MAX_DOWNLOAD_BYTES:
+                raise DownloadSizeExceeded(
+                    f'Download stopped after exceeding the '
+                    f'{format_bytes(MAX_DOWNLOAD_BYTES)} limit.'
+                )
             now = time.monotonic()
             if now - last_progress_update[0] < 1:
                 return
             last_progress_update[0] = now
             total = event.get('total_bytes') or event.get(
                 'total_bytes_estimate')
-            downloaded = event.get('downloaded_bytes', 0)
             progress = int(downloaded * 100 / total) if total else 0
-            with SessionLocal.begin() as session:
-                job = session.get(Job, job_id)
-                if job and job.status == 'processing':
-                    job.progress = min(progress, 99)
-                    job.total_bytes = total
+            update_job('downloading', min(progress * 7 // 10, 70), total)
 
-        if not selected_format:
-            with yt_dlp.YoutubeDL({
-                'quiet': True,
-                'no_warnings': True,
-                'noplaylist': True,
-                'socket_timeout': WORKER_JOB_TIMEOUT_SECONDS,
-                'ffmpeg_location': str(media_tools),
-            }) as downloader:
-                info = downloader.extract_info(source_url, download=False)
-            formats = []
+        with yt_dlp.YoutubeDL({
+            'quiet': True,
+            'no_warnings': True,
+            'noplaylist': True,
+            'socket_timeout': WORKER_JOB_TIMEOUT_SECONDS,
+            'ffmpeg_location': str(media_tools),
+        }) as downloader:
+            info = downloader.extract_info(source_url, download=False)
+
+        if selected_format:
+            ensure_download_size(info, selected_format)
+        else:
+            formats_by_display = {}
             for item in info.get('formats', []):
                 if not item.get('format_id') or not item.get('vcodec') or item.get('vcodec') == 'none':
                     continue
-                formats.append({
+                estimated_size = estimated_download_size(
+                    info, item['format_id'])
+                if estimated_size and estimated_size > MAX_DOWNLOAD_BYTES:
+                    continue
+                display_format = {
                     'id': str(item['format_id']),
                     'label': f"{item.get('height') or '?'}p {item.get('ext', '').upper()}",
-                    'detail': f"{item.get('resolution') or 'video'} / {item.get('fps') or '?'} fps",
-                })
+                    'detail': (
+                        f"{item.get('resolution') or 'video'} / "
+                        f"{item.get('fps') or '?'} fps"
+                        + (f" / {format_bytes(estimated_size)}" if estimated_size else '')
+                    ),
+                    '_source': item,
+                }
+                display_key = format_display_key(item)
+                current = formats_by_display.get(display_key)
+                if not current or format_quality_key(item) > format_quality_key(current['_source']):
+                    formats_by_display[display_key] = display_format
+            formats = sorted(
+                formats_by_display.values(),
+                key=lambda item: (
+                    item['_source'].get('height') or -1,
+                    item['_source'].get('fps') or -1,
+                    item['_source'].get('quality') or -1,
+                ),
+                reverse=True,
+            )
+            for item in formats:
+                item.pop('_source', None)
             if not formats:
-                formats.append({
-                    'id': 'best',
-                    'label': 'Best available',
-                    'detail': 'Automatic playable MP4',
-                })
-            unique_formats = {item['id']: item for item in formats}
+                ensure_download_size(info, 'best')
+                formats.append({'id': 'best', 'label': 'Best available',
+                                'detail': 'Automatic playable MP4'})
             with SessionLocal.begin() as session:
                 job = session.get(Job, job_id)
                 if job:
                     job.title = info.get('title') or 'Video'
                     job.thumbnail_url = info.get('thumbnail')
                     job.available_formats = json.dumps(
-                        list(unique_formats.values()))
+                        formats)
                     job.status = 'awaiting_format'
                     job.progress = 0
             return
 
-        format_selector = (
-            'bestvideo*+bestaudio/best'
-            if selected_format == 'best'
-            else f'{selected_format}+bestaudio/best'
+        selected_item = next(
+            (item for item in info.get('formats', [])
+             if str(item.get('format_id')) == str(selected_format)),
+            None,
         )
+        if selected_format == 'best':
+            format_selector = 'bestvideo*+bestaudio'
+        elif selected_item and selected_item.get('acodec') not in (None, 'none'):
+            format_selector = selected_format
+        else:
+            format_selector = f'{selected_format}+bestaudio'
         options = {
             'format': format_selector,
             'merge_output_format': 'mp4',
@@ -298,10 +525,7 @@ def process_job(job_id):
         if source_file.stat().st_size > MAX_DOWNLOAD_BYTES:
             raise RuntimeError('The downloaded file exceeds the size limit')
         normalized_file = work_dir / 'vidzflow-normalized.mp4'
-        with SessionLocal.begin() as session:
-            job = session.get(Job, job_id)
-            if job and job.status == 'processing':
-                job.progress = 95
+        update_job('converting', 75)
 
         normalize = subprocess.run(
             [
@@ -322,6 +546,7 @@ def process_job(job_id):
         source_file = normalized_file
         if source_file.stat().st_size > MAX_DOWNLOAD_BYTES:
             raise RuntimeError('The converted file exceeds the size limit')
+        update_job('checking', 90)
         probe = subprocess.run(
             [
                 str(ffprobe), '-v', 'error', '-select_streams', 'v:0',
@@ -340,6 +565,7 @@ def process_job(job_id):
         client = storage_client()
         content_type = mimetypes.guess_type(source_file.name)[
             0] or 'application/octet-stream'
+        update_job('uploading', 96)
         client.upload_file(
             str(source_file),
             S3_BUCKET,
@@ -361,7 +587,7 @@ def process_job(job_id):
             )
             with SessionLocal.begin() as session:
                 job = session.get(Job, job_id)
-                if not job:
+                if not job or job.status == 'failed':
                     raise RuntimeError('The job record no longer exists')
                 job.status = 'ready'
                 job.progress = 100
@@ -379,34 +605,54 @@ def process_job(job_id):
             raise
         logger.info('Completed job %s (%s)', job_id, platform)
     except Exception as error:
-        logger.exception('Job %s failed', job_id)
-        with SessionLocal.begin() as session:
-            job = session.get(Job, job_id)
-            if job:
-                job.status = 'failed'
-                job.error_message = 'The worker could not process this download.'
+        retry_delay = record_job_failure(job_id, error)
+        if retry_delay is not None:
+            release_resource_lease(job_id)
+            logger.warning(
+                'Job %s will retry after %.1f seconds: %s',
+                job_id, retry_delay, error)
+            time.sleep(retry_delay)
+        else:
+            logger.exception('Job %s failed', job_id)
     finally:
+        with SessionLocal.begin() as session:
+            session.query(ResourceLease).filter_by(job_id=job_id).delete()
         shutil.rmtree(work_dir, ignore_errors=True)
 
 
 def run():
     init_db()
     next_cleanup = 0.0
-    while True:
-        now = time.monotonic()
-        if now >= next_cleanup:
-            try:
-                cleanup_expired_jobs()
-                cleanup_orphan_objects()
-            except Exception:
-                logger.exception(
-                    'Storage cleanup cycle failed; continuing worker loop')
-            next_cleanup = now + CLEANUP_INTERVAL_SECONDS
-        job_id = claim_job()
-        if job_id:
-            process_job(job_id)
-        else:
-            time.sleep(WORKER_POLL_SECONDS)
+    next_heartbeat = 0.0
+    with ThreadPoolExecutor(max_workers=WORKER_CONCURRENCY) as executor:
+        active_futures = set()
+        while True:
+            active_futures = {
+                future for future in active_futures if not future.done()
+            }
+            now = time.monotonic()
+            if now >= next_heartbeat:
+                try:
+                    write_heartbeat()
+                except Exception:
+                    logger.exception('Could not write worker heartbeat')
+                next_heartbeat = now + WORKER_HEARTBEAT_SECONDS
+            if now >= next_cleanup:
+                try:
+                    cleanup_expired_jobs()
+                    cleanup_orphan_objects()
+                except Exception:
+                    logger.exception(
+                        'Storage cleanup cycle failed; continuing worker loop')
+                next_cleanup = now + CLEANUP_INTERVAL_SECONDS
+            if len(active_futures) >= WORKER_CONCURRENCY:
+                time.sleep(WORKER_POLL_SECONDS)
+                continue
+            job_id = claim_job()
+            if job_id:
+                active_futures.add(executor.submit(process_job, job_id))
+            else:
+                time.sleep(WORKER_POLL_SECONDS)
 
 
 if __name__ == '__main__':

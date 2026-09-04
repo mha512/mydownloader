@@ -5,29 +5,95 @@ The Render worker performs downloading and storage.
 """
 
 import json
+import logging
+import shutil
+import tempfile
+from datetime import datetime, timezone
 import uuid
 
 from flask import Flask, jsonify, render_template, request
 from sqlalchemy import func, select, text
+from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
 from anonymous_jobs import issue_job_token, read_job_token
-from config import MAX_ACTIVE_JOBS, MAX_REQUEST_BYTES, MAX_URL_LENGTH, SECRET_KEY
-from database import SessionLocal, init_db
-from models import Job
-from url_validation import detect_platform
+from config import (
+    MAX_ACTIVE_JOBS,
+    MAX_REQUEST_BYTES,
+    MAX_URL_LENGTH,
+    RATE_LIMIT_CAPACITY,
+    RATE_LIMIT_REFILL_SECONDS,
+    SECRET_KEY,
+)
+from database import SessionLocal, engine, init_db
+from models import ACTIVE_JOB_STATUSES, Job, ResourceLease, WorkerHeartbeat
+from url_validation import detect_platform, is_valid_format_id
+from rate_limit import DatabaseRateLimiter
 
 
 SUPPORTED_PLATFORMS = {'youtube', 'tiktok', 'instagram', 'facebook'}
 MAX_BULK_URLS = 10
+CAPACITY_LOCK_KEY = 917342
+logger = logging.getLogger(__name__)
 
 
-def create_app():
+def lock_capacity(session):
+    if engine.dialect.name == 'postgresql':
+        session.execute(text(
+            f'SELECT pg_advisory_xact_lock({CAPACITY_LOCK_KEY})'
+        ))
+
+
+def active_job_count(session):
+    return session.scalar(
+        select(func.count()).select_from(Job).where(
+            Job.status.in_(ACTIVE_JOB_STATUSES)
+        )
+    ) or 0
+
+
+def create_app(rate_limiter=None):
     app = Flask(__name__)
     app.config.from_mapping(
         SECRET_KEY=SECRET_KEY,
         MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
     )
     init_db()
+    limiter = rate_limiter or DatabaseRateLimiter(
+        SessionLocal, RATE_LIMIT_CAPACITY, RATE_LIMIT_REFILL_SECONDS)
+
+    def check_rate_limit():
+        allowed, retry_after = limiter.allow(request.remote_addr or 'unknown')
+        if allowed:
+            return None
+        response = jsonify({
+            'status': 'error',
+            'message': 'Too many download requests. Please try again shortly.',
+        })
+        response.status_code = 429
+        response.headers['Retry-After'] = str(retry_after)
+        return response
+
+    @app.errorhandler(RequestEntityTooLarge)
+    def request_too_large(_error):
+        return jsonify({
+            'status': 'error',
+            'message': 'The request is too large. Please submit a smaller URL or request.',
+        }), 413
+
+    @app.errorhandler(HTTPException)
+    def http_error(error):
+        return jsonify({
+            'status': 'error',
+            'message': error.description or 'The request could not be completed.',
+        }), error.code
+
+    @app.errorhandler(Exception)
+    def unexpected_error(error):
+        logger.exception('Unhandled web request error', exc_info=error)
+        return jsonify({
+            'status': 'error',
+            'message': 'The service could not complete the request.',
+        }), 500
 
     @app.after_request
     def add_security_headers(response):
@@ -43,15 +109,21 @@ def create_app():
 
     @app.get('/')
     def index():
-        return render_template('index.html')
+        return render_template('pages/home/index.html')
 
     @app.get('/privacy')
     def privacy_page():
-        return render_template('privacy.html')
+        return render_template('pages/legal/privacy.html')
 
     @app.get('/terms')
     def terms_page():
-        return render_template('terms.html')
+        return render_template('pages/legal/terms.html')
+
+    @app.get('/supported-platforms')
+    def supported_platforms():
+        return jsonify({
+            'platforms': sorted(SUPPORTED_PLATFORMS),
+        })
 
     @app.get('/health')
     def health():
@@ -59,8 +131,45 @@ def create_app():
             session.execute(text('SELECT 1'))
         return jsonify({'status': 'ok'})
 
+    @app.get('/metrics')
+    def metrics():
+        with SessionLocal() as session:
+            state_rows = session.execute(
+                select(Job.status, func.count()).group_by(Job.status)
+            ).all()
+            lease_count = session.scalar(
+                select(func.count()).select_from(ResourceLease)
+            ) or 0
+            heartbeat_rows = session.scalars(
+                select(WorkerHeartbeat.heartbeat_at)
+            ).all()
+        disk = shutil.disk_usage(tempfile.gettempdir())
+        now = datetime.now(timezone.utc)
+        heartbeat_ages = [
+            max(0, int((now - (
+                heartbeat.replace(tzinfo=timezone.utc)
+                if heartbeat.tzinfo is None else heartbeat
+            )).total_seconds()))
+            for heartbeat in heartbeat_rows
+        ]
+        return jsonify({
+            'status': 'ok',
+            'jobs_by_state': dict(state_rows),
+            'active_leases': lease_count,
+            'disk': {
+                'total_bytes': disk.total,
+                'free_bytes': disk.free,
+                'used_bytes': disk.used,
+            },
+            'worker_heartbeat_age_seconds': min(heartbeat_ages)
+            if heartbeat_ages else None,
+        })
+
     @app.post('/download')
     def download():
+        rate_error = check_rate_limit()
+        if rate_error:
+            return rate_error
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({'status': 'error', 'message': 'Invalid request.'}), 400
@@ -74,13 +183,16 @@ def create_app():
                 'status': 'error',
                 'message': 'Only supported HTTPS media URLs are accepted.',
             }), 400
+        format_value = data.get('format')
+        if format_value is not None and not is_valid_format_id(format_value):
+            return jsonify({
+                'status': 'error',
+                'message': 'The format must be a single valid format ID.',
+            }), 400
 
         with SessionLocal.begin() as session:
-            active_jobs = session.scalar(
-                select(func.count()).select_from(Job).where(
-                    Job.status.in_(['queued', 'processing'])
-                )
-            )
+            lock_capacity(session)
+            active_jobs = active_job_count(session)
             if active_jobs >= MAX_ACTIVE_JOBS:
                 return jsonify({
                     'status': 'error',
@@ -92,7 +204,8 @@ def create_app():
                 source_url=url,
                 platform=platform,
                 status='queued',
-                selected_format=data.get('format') or None,
+                selected_format=(str(format_value).strip()
+                                 if format_value is not None else None),
             ))
         return jsonify({
             'status': 'queued',
@@ -129,6 +242,9 @@ def create_app():
 
     @app.post('/preview')
     def preview():
+        rate_error = check_rate_limit()
+        if rate_error:
+            return rate_error
         data = request.get_json(silent=True)
         url = str(data.get('url', '')).strip(
         ) if isinstance(data, dict) else ''
@@ -136,11 +252,8 @@ def create_app():
         if len(url) > MAX_URL_LENGTH or platform not in SUPPORTED_PLATFORMS:
             return jsonify({'status': 'error', 'message': 'Only supported HTTPS media URLs are accepted.'}), 400
         with SessionLocal.begin() as session:
-            active_jobs = session.scalar(
-                select(func.count()).select_from(Job).where(
-                    Job.status.in_(['queued', 'processing', 'preview'])
-                )
-            )
+            lock_capacity(session)
+            active_jobs = active_job_count(session)
             if active_jobs >= MAX_ACTIVE_JOBS:
                 return jsonify({'status': 'error', 'message': 'The service is busy. Please try again shortly.'}), 429
             job_id = uuid.uuid4().hex
@@ -175,6 +288,9 @@ def create_app():
 
     @app.post('/bulk-download')
     def bulk_download():
+        rate_error = check_rate_limit()
+        if rate_error:
+            return rate_error
         data = request.get_json(silent=True)
         urls = data.get('urls') if isinstance(data, dict) else None
         if not isinstance(urls, list) or not urls:
@@ -187,6 +303,9 @@ def create_app():
 
         results = []
         with SessionLocal.begin() as session:
+            lock_capacity(session)
+            active_jobs = active_job_count(session)
+            accepted_jobs = 0
             for raw_url in urls:
                 url = str(raw_url).strip()
                 if len(url) > MAX_URL_LENGTH:
@@ -205,12 +324,7 @@ def create_app():
                     })
                     continue
                 job_id = uuid.uuid4().hex
-                active_jobs = session.scalar(
-                    select(func.count()).select_from(Job).where(
-                        Job.status.in_(['queued', 'processing'])
-                    )
-                )
-                if active_jobs >= MAX_ACTIVE_JOBS:
+                if active_jobs + accepted_jobs >= MAX_ACTIVE_JOBS:
                     results.append({
                         'status': 'error',
                         'url': url,
@@ -218,6 +332,7 @@ def create_app():
                     })
                     continue
                 session.add(Job(id=job_id, source_url=url, platform=platform))
+                accepted_jobs += 1
                 results.append({
                     'status': 'queued',
                     'job_id': job_id,
