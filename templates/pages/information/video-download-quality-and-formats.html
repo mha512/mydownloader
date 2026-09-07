@@ -1,0 +1,40 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}Video Download Quality and Formats | ToxicDownloader{% endblock %}
+{% block meta_description %}Understand why ToxicDownloader shows different video qualities, how format IDs work, and what happens when a source returns limited formats.{% endblock %}
+
+{% block extra_head %}
+  <meta property="og:type" content="article" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=4" />
+  <script type="application/ld+json">
+    {{ {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      'headline': 'Video Download Quality and Formats',
+      'url': request.url_root.rstrip('/') ~ '/video-download-quality-and-formats',
+      'publisher': {'@type': 'Organization', 'name': 'ToxicDownloader'},
+      'description': self.meta_description()
+    } | tojson }}
+  </script>
+{% endblock %}
+
+{% block content %}
+  <div class="container legal-shell">
+    <header class="legal-hero">
+      <div class="eyebrow">Format guide</div>
+      <h1>Video Download Quality and Formats</h1>
+      <p class="lead">Why does one source offer several choices while another returns only one playable file?</p>
+    </header>
+    <section class="legal-card prose">
+      <h2>Formats come from the source</h2>
+      <p>During preview, the worker reads the formats returned by the current extractor. ToxicDownloader filters out entries it cannot prepare within its configured download limits and shows the remaining choices.</p>
+      <h2>Quality is not guaranteed</h2>
+      <p>A 1080p option may be absent, or video and audio may be separate streams that require processing. The final file is normalized to MP4 when the selected source can be downloaded and converted successfully.</p>
+      <h2>Why formats differ by platform</h2>
+      <p>{{ platforms | map(attribute='name') | join(', ') }} expose different metadata and media variants. Public access, region, post type, account restrictions, and source changes can all affect the available list, where supported by the current extractor.</p>
+      <h2>When a download fails</h2>
+      <p>Retrying can help with a temporary source or network issue, but it will not make private, login-gated, removed, or DRM-protected media available. A smaller returned format may be the only usable choice.</p>
+      <p>Start with the <a href="{{ url_for('index') }}">main downloader</a>, or choose a platform: {% for platform in platforms %}<a href="{{ url_for('platform_page', platform_slug=platform.slug) }}">{{ platform.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}. See the <a href="{{ url_for('privacy_page') }}">Privacy Policy</a> and <a href="{{ url_for('terms_page') }}">Terms of Use</a> for service boundaries.</p>
+    </section>
+  </div>
+{% endblock %}

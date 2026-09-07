@@ -1,0 +1,83 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}{{ platform.name }} Video Downloader | ToxicDownloader{% endblock %}
+{% block meta_description %}{{ platform.description }}{% endblock %}
+
+{% block extra_head %}
+  <meta property="og:type" content="website" />
+  <meta name="keywords" content="{{ platform.name }} video downloader, public {{ platform.name }} video, ToxicDownloader" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=4" />
+  <script type="application/ld+json">
+    {{ {
+      '@context': 'https://schema.org',
+      '@type': 'WebApplication',
+      'name': 'ToxicDownloader ' ~ platform.name ~ ' Video Downloader',
+      'url': request.url_root.rstrip('/') ~ '/' ~ platform.slug ~ '-video-downloader',
+      'applicationCategory': 'MultimediaApplication',
+      'operatingSystem': 'Web Browser',
+      'description': platform.description,
+      'publisher': {'@type': 'Organization', 'name': 'ToxicDownloader'},
+      'featureList': ['Public ' ~ platform.name ~ ' preview', 'Available format selection', 'Queued download processing', 'Download progress reporting']
+    } | tojson }}
+  </script>
+{% endblock %}
+
+{% block content %}
+  <div class="container">
+    <header class="hero">
+      <div class="eyebrow">{{ platform.name }} workflow</div>
+      <h1><span class="gradient">{{ platform.name }} Video Downloader with ToxicDownloader</span></h1>
+      <p>{{ platform.description }}</p>
+    </header>
+
+    <section class="card prose" aria-labelledby="public-url-heading">
+      <div class="section-kicker">Before you start</div>
+      <h2 class="section-heading" id="public-url-heading">Use a public {{ platform.name }} URL</h2>
+      <p>A URL such as <strong>{{ platform.url_example }}</strong> can be submitted where supported by the current extractor.</p>
+      <p>{{ platform.not_supported_example }} will not work. ToxicDownloader does not use account credentials or bypass private, login-gated, or DRM-protected content.</p>
+      <p>{{ platform.limitation }}</p>
+    </section>
+
+    {% include 'pages/home/downloader.html' %}
+
+    <section class="card" aria-labelledby="steps-heading">
+      <div class="section-kicker">Simple workflow</div>
+      <h2 class="section-heading" id="steps-heading">How to download from {{ platform.name }}</h2>
+      <div class="feature-grid">
+        <article class="feature"><h3>1. Paste a public URL</h3><p>Use a public {{ platform.name }} link where supported by the current extractor.</p></article>
+        <article class="feature"><h3>2. Review formats</h3><p>Wait for extraction and review the formats returned for this specific post or video.</p></article>
+        <article class="feature"><h3>3. Download</h3><p>Choose an available format and let ToxicDownloader prepare the MP4 file.</p></article>
+      </div>
+    </section>
+
+    <section class="card faq" aria-labelledby="faq-heading">
+      <div>
+        <div class="section-kicker">{{ platform.name }} questions</div>
+        <h2 class="section-heading" id="faq-heading">Frequently asked questions</h2>
+      </div>
+      {% for question, answer in platform.faqs %}
+        <details>
+          <summary>{{ question }}</summary>
+          <p>{{ answer }}</p>
+        </details>
+      {% endfor %}
+    </section>
+
+    <section class="card prose" aria-labelledby="more-heading">
+      <div class="section-kicker">More from ToxicDownloader</div>
+      <h2 class="section-heading" id="more-heading">Explore public-video downloads</h2>
+      <p>Learn <a href="{{ url_for('how_to_download_public_videos') }}">how to download public videos</a> and review <a href="{{ url_for('video_download_quality_and_formats') }}">quality and format choices</a> before starting.</p>
+      <p>ToxicDownloader also supports these platform pages where supported by the current extractor:</p>
+      <ul>
+        {% for other in platforms if other.slug != platform.slug %}
+          <li><a href="{{ url_for('platform_page', platform_slug=other.slug) }}">{{ other.name }} video downloader</a></li>
+        {% endfor %}
+      </ul>
+      <p>Read the <a href="{{ url_for('privacy_page') }}">Privacy Policy</a> and <a href="{{ url_for('terms_page') }}">Terms of Use</a> before using the service.</p>
+    </section>
+  </div>
+{% endblock %}
+
+{% block extra_scripts %}
+  <script src="{{ url_for('static', filename='js/downloader.js') }}?v=4" defer></script>
+{% endblock %}

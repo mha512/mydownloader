@@ -1,0 +1,40 @@
+{% extends 'layouts/base.html' %}
+
+{% block title %}How to Download Public Videos | ToxicDownloader{% endblock %}
+{% block meta_description %}Learn how to check a public video URL, understand access limitations, choose an available format, and download it with ToxicDownloader.{% endblock %}
+
+{% block extra_head %}
+  <meta property="og:type" content="article" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=4" />
+  <script type="application/ld+json">
+    {{ {
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      'headline': 'How to Download Public Videos',
+      'url': request.url_root.rstrip('/') ~ '/how-to-download-public-videos',
+      'publisher': {'@type': 'Organization', 'name': 'ToxicDownloader'},
+      'description': self.meta_description()
+    } | tojson }}
+  </script>
+{% endblock %}
+
+{% block content %}
+  <div class="container legal-shell">
+    <header class="legal-hero">
+      <div class="eyebrow">Practical guide</div>
+      <h1>How to Download Public Videos</h1>
+      <p class="lead">What should you check before submitting a link, and why can a public-looking URL still fail?</p>
+    </header>
+    <section class="legal-card prose">
+      <h2>1. Confirm the video is public</h2>
+      <p>Open the URL in a private browser window without signing in. If the source asks for an account, restricts the audience, or reports that the post is unavailable, ToxicDownloader cannot bypass that access control.</p>
+      <h2>2. Use the platform URL itself</h2>
+      <p>Submit a direct public URL from a supported platform. Short links and redirects work only where supported by the current extractor. Do not submit passwords, cookies, or private credentials.</p>
+      <h2>3. Review the returned preview</h2>
+      <p>ToxicDownloader first extracts metadata and available formats. The quality choices are not promises of every resolution; they reflect what the current source returned for that specific video.</p>
+      <h2>4. Download only content you may use</h2>
+      <p>You are responsible for permission, copyright, and the platform's terms. Public visibility does not automatically grant permission to republish or redistribute a video.</p>
+      <p>For platform-specific examples, visit {% for platform in platforms %}<a href="{{ url_for('platform_page', platform_slug=platform.slug) }}">{{ platform.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}. You can also read the <a href="{{ url_for('privacy_page') }}">Privacy Policy</a> and <a href="{{ url_for('terms_page') }}">Terms of Use</a>.</p>
+    </section>
+  </div>
+{% endblock %}

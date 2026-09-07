@@ -23,6 +23,7 @@ SECRET_KEY = os.environ.get(
     'VIDZFLOW_SECRET_KEY',
     'development-only-change-this-secret'
 )
+METRICS_AUTH_TOKEN = os.environ.get('METRICS_AUTH_TOKEN', '')
 IS_PRODUCTION = not DATABASE_URL.startswith('sqlite')
 if IS_PRODUCTION and (
     SECRET_KEY == 'development-only-change-this-secret'
@@ -56,6 +57,12 @@ S3_PRESIGNED_URL_SECONDS = int(
 JOB_RETENTION_SECONDS = int(
     os.environ.get('JOB_RETENTION_SECONDS', '1800')
 )
+# Retention must outlast signed URLs so a link cannot point to a deleted file.
+if JOB_RETENTION_SECONDS < S3_PRESIGNED_URL_SECONDS:
+    raise RuntimeError(
+        'JOB_RETENTION_SECONDS must be greater than or equal to '
+        'S3_PRESIGNED_URL_SECONDS'
+    )
 CLEANUP_INTERVAL_SECONDS = int(
     os.environ.get('CLEANUP_INTERVAL_SECONDS', '300')
 )

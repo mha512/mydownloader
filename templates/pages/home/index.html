@@ -1,31 +1,26 @@
-﻿{% extends 'layouts/base.html' %}
+{% extends 'layouts/base.html' %}
 
 {% block title %}ToxicDownloader{% endblock %}
 {% block meta_description %}ToxicDownloader lets you preview and download public media from supported platforms with a clean, responsive interface.{% endblock %}
 
 {% block extra_head %}
-  <meta name="referrer" content="strict-origin-when-cross-origin" />
   <meta property="og:type" content="website" />
-  <meta property="og:title" content="ToxicDownloader" />
-  <meta property="og:description" content="Preview publicly accessible videos from supported platforms, choose an available quality, and download with a clean responsive workflow." />
-  <meta property="og:site_name" content="ToxicDownloader" />
-  <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="ToxicDownloader" />
-  <meta name="twitter:description" content="A responsive public media video downloader for YouTube, TikTok, Instagram and Facebook." />
   <meta name="keywords" content="social media video downloader, online video downloader, YouTube video downloader, TikTok video downloader, Instagram video downloader, Facebook video downloader, public video downloader" />
   <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
       "name": "ToxicDownloader",
+      "url": "{{ request.url_root.rstrip('/') }}/",
       "applicationCategory": "MultimediaApplication",
       "operatingSystem": "Web Browser",
       "description": "A responsive tool for previewing and downloading publicly accessible social media videos from supported platforms.",
+      "publisher": { "@type": "Organization", "name": "ToxicDownloader" },
       "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
-      "featureList": ["Platform detection", "Video preview", "Available quality selection", "Responsive design", "Dark mode"]
+      "featureList": ["Public media preview", "Available format selection", "Queued download processing", "Download progress reporting"]
     }
   </script>
-  {% include 'pages/home/styles.html' %}
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=6" />
 {% endblock %}
 
 {% block content %}
@@ -40,5 +35,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-  {% include 'pages/home/scripts.html' %}
+  <script src="{{ url_for('static', filename='js/downloader.js') }}?v=4" defer></script>
 {% endblock %}

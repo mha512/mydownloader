@@ -5,7 +5,7 @@
 		</div>
 		<details>
 			<summary>Which platforms are supported?</summary>
-			<p>YouTube, TikTok, Instagram and Facebook are supported by the current application.</p>
+			<p>{{ platforms | map(attribute='name') | join(', ') }} are supported where supported by the current extractor.</p>
 		</details>
 		<details>
 			<summary>Why do quality options differ?</summary>

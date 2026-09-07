@@ -12,13 +12,13 @@ This file tracks the requested production-hardening work. Each step is studied b
 
 ## 1. Multi-worker concurrency
 
-**Status: Partial.** PostgreSQL job claiming uses `FOR UPDATE SKIP LOCKED`, and bounded in-process concurrency is configurable with `WORKER_CONCURRENCY`. The default remains one concurrent job because no staging load result is available yet.
+**Status: Partial.** PostgreSQL job claiming uses `FOR UPDATE SKIP LOCKED`, and bounded in-process concurrency is configurable with `WORKER_CONCURRENCY`. A real local PostgreSQL 16 run passed `tests/test_worker_concurrency.py` with one test passed and zero skipped. The test required explicit test-only quota settings (`MAX_CONCURRENT_DOWNLOADS=8`, `MAX_DOWNLOAD_BYTES=1M`, `MAX_TEMP_DISK_BYTES=16M`) because its eight-claim assertion intentionally exceeds the production default quota.
 
 **Acceptance checks:** multiple workers can claim different jobs; no job is claimed twice; queued work is not silently lost; worker concurrency is configurable.
 
-**Tests:** `tests/test_worker_concurrency.py` runs eight concurrent claims and verifies unique ownership. It skips when `TEST_DATABASE_URL` is absent or SQLite is selected.
+**Tests:** `.venv\Scripts\python.exe -m pytest tests/test_worker_concurrency.py -v` against PostgreSQL 16: 1 passed, 0 skipped. The test runs eight concurrent claims and verifies unique ownership.
 
-**Remaining production check:** run the test with a real shared PostgreSQL database and size `WORKER_CONCURRENCY` against CPU, memory, and disk capacity.
+**Remaining production check:** run the test with multiple real worker processes and size `WORKER_CONCURRENCY` against CPU, memory, and disk capacity.
 
 ## 2. Per-IP rate limiting
 
@@ -36,7 +36,7 @@ This file tracks the requested production-hardening work. Each step is studied b
 
 **Acceptance checks:** active worker work is bounded across processes; quota rejection returns a job to `queued`; local temporary disk is checked before expensive work.
 
-**Tests:** `tests/test_resource_quota.py` proves a second job remains queued at quota and claims after release.
+**Tests:** `.venv\Scripts\python.exe -m pytest tests/test_resource_quota.py -v` against PostgreSQL 16: 1 passed, 0 skipped. The test proves a second job remains queued at quota and claims after release.
 
 **Remaining production check:** tune `MAX_CONCURRENT_DOWNLOADS` and `MAX_TEMP_DISK_BYTES` to the actual Render worker resources.
 
@@ -52,27 +52,29 @@ This file tracks the requested production-hardening work. Each step is studied b
 
 ## 5. Crash and concurrency integration tests
 
-**Status: Partial.** Added concurrent submission and conservative stale-claim coverage. Full PostgreSQL/S3 crash simulations remain environment-gated.
+**Status: Partial.** Local PostgreSQL integration now runs without skips: `tests/test_concurrency_recovery.py` passed both concurrent submission and stale-claim recovery tests. Full PostgreSQL/S3 crash simulations during download, conversion, upload, and interruption remain open.
 
 **Acceptance checks:** concurrent claims, two-user submission, cleanup/claim race, and worker interruption during download/conversion/upload are covered.
 
-**Environment note:** PostgreSQL and S3 tests should skip clearly when integration services are not configured.
+**Environment note:** PostgreSQL and MinIO were started locally and healthy. S3 crash simulations were not exercised by the current test files.
 
 ## 6. Security and correctness hardening
 
-**Status: Partial.** URL host validation, signed tokens, consistent framework JSON errors, the documented platform endpoint, private-DNS rejection, and Alembic migrations now exist. Redirect-target validation and deployment egress policy remain.
+**Status: Partial.** URL host validation, signed tokens, consistent framework JSON errors, the documented platform endpoint, private-DNS rejection, redirect-hop validation, and Alembic migrations now exist. Deployment egress policy remains a production concern.
 
 **Acceptance checks:** consistent JSON errors; documented outbound policy; schema changes do not depend on racing application startup.
 
-**Tests:** `tests/test_url_security.py` covers private and public DNS results. Framework 404 and 413 behavior is covered by endpoint checks. Alembic was applied locally through revision `0002_worker_heartbeats`.
+**Tests:** `.venv\Scripts\python.exe -m pytest tests/test_url_security.py -v`: 7 passed, including a mocked public URL returning `302 Location: http://127.0.0.1/internal`; the initial public host check passes and the redirect hop is rejected after re-validation. Framework 404 and 413 behavior is covered by endpoint checks. Alembic was applied locally through revision `0002_worker_heartbeats`.
 
 ## 7. Observability
 
-**Status: Done for basic JSON metrics.** Added job state counts, active resource leases, temporary disk usage, and worker heartbeat age at `/metrics`.
+**Status: Done for basic JSON metrics with operator bearer authentication.** Added job state counts, active resource leases, temporary disk usage, and worker heartbeat age at `/metrics`.
 
 **Acceptance checks:** queue depth, state counts, heartbeat, disk usage, and failure counts are available without exposing secrets or job URLs.
 
-**Remaining gap:** metrics are JSON rather than Prometheus format and are not yet protected by an operator authentication policy.
+**Remaining gap:** metrics are JSON rather than Prometheus format.
+
+**Verification:** `.venv\Scripts\python.exe -m pytest tests/test_observability.py -v`: 2 passed, including `401` without credentials and `200` with the `METRICS_AUTH_TOKEN` bearer token.
 
 ## 8. Documentation and cleanup
 
@@ -89,6 +91,12 @@ This file tracks the requested production-hardening work. Each step is studied b
 **Tests:** `python -m py_compile loadtest/locustfile.py` passed. Execute `locust -f loadtest/locustfile.py --host <staging-url>` with explicit `LOAD_TEST_SUCCESS_URL` and optional `LOAD_TEST_FAILURE_URL`.
 
 **Remaining production check:** run the baseline and concurrency matrix against real staging PostgreSQL, worker, and S3, then replace this section's blocked status with measured numbers.
+
+**Local correctness smoke test (not capacity):** with local PostgreSQL/MinIO healthy and `WORKER_CONCURRENCY=1`, ran `.venv\Scripts\python.exe -m locust -f loadtest/locustfile.py --headless --host http://127.0.0.1:5000 -u 2 -r 2 -t 10s --only-summary` using deliberately invalid supported URLs. Actual result: 22 requests, 0 failures, exit code 0 (2 previews and 20 job polls). This exercised preview and polling only; it did not produce production throughput numbers or reach format selection/download-quality because the worker was not run against valid media.
+
+**Scope note:** this Locust scenario does not itself assert 429 responses, quota rejection, retries, or double-claim prevention; those correctness checks are represented by the focused pytest results above and `tests/test_rate_limit.py` / `tests/test_retries.py`.
+
+**Production capacity remains Blocked:** only a staging Render/PostgreSQL/S3 run can close Section 9. This local run validates correctness smoke behavior, not throughput.
 
 ## Implementation Log
 
@@ -108,4 +116,8 @@ This file tracks the requested production-hardening work. Each step is studied b
 | 2 | Added Locust end-to-end load scenario | `python -m py_compile loadtest/locustfile.py` | Passed; staging baseline not run because no staging environment was configured |
 | 5 | Added configurable SQLAlchemy PostgreSQL pooling | `python -m py_compile database.py config.py` | Pending final cumulative validation |
 | 9 | Added load-proven capacity section and measurement procedure | N/A | Blocked pending staging infrastructure; no numbers claimed |
+| Local integration | Started PostgreSQL 16 and MinIO with Docker Compose; ran PostgreSQL-backed worker concurrency, quota, recovery, and full suite | `docker compose up -d`; `pytest tests/test_worker_concurrency.py -v`; `pytest tests/test_resource_quota.py -v`; `pytest tests/test_concurrency_recovery.py -v`; `pytest tests -q` | Containers healthy; 1 + 1 + 2 integration tests passed; full suite 17 passed, 0 skipped |
+| Local correctness smoke | Ran two-user, ten-second Locust smoke with `WORKER_CONCURRENCY=1` | `python -m locust -f loadtest/locustfile.py --headless --host http://127.0.0.1:5055 -u 2 -r 2 -t 10s --only-summary` | 10 requests, 0 failures; correctness smoke only, not capacity |
 | Final follow-up | Shared database limiter, configurable pooling, Locust import, migrations, and cumulative tests | `pytest tests -q` | 11 passed, 2 skipped; no staging capacity numbers available |
+| Verification | Re-verified Docker, local services, integration tests, regression tests, full suite, and local Locust smoke | `docker --version`; `docker compose version`; `docker info --format '{{.ServerVersion}}'`; `.venv\Scripts\python.exe -m pytest tests -q`; `.venv\Scripts\python.exe -m locust -f loadtest/locustfile.py --headless --host http://127.0.0.1:5000 -u 2 -r 2 -t 10s --only-summary` | Docker 29.7.2 / Compose v5.5.0; containers healthy; regression tests 7 passed; integration tests 4 passed; full suite 17 passed; Locust 22 requests, 0 failures; Section 9 remains Blocked pending staging Render/PostgreSQL/S3 |
+| Security follow-up | Added real redirect-hop validation and bearer authentication for `/metrics` | `.venv\Scripts\python.exe -m pytest tests/test_url_security.py tests/test_observability.py -v`; `.venv\Scripts\python.exe -m pytest tests -q` | Focused security tests 9 passed; full suite 19 passed; redirect validation and metrics auth verified locally; deployment egress and staging capacity remain open |

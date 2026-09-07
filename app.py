@@ -1,17 +1,18 @@
-"""Lightweight VidzFlow web service.
+"""Lightweight ToxicDownloader web service.
 
 The web service validates requests and coordinates jobs through the database.
 The Render worker performs downloading and storage.
 """
 
 import json
+import hmac
 import logging
 import shutil
 import tempfile
 from datetime import datetime, timezone
 import uuid
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, abort, jsonify, render_template, request
 from sqlalchemy import func, select, text
 from werkzeug.exceptions import HTTPException, RequestEntityTooLarge
 
@@ -20,17 +21,19 @@ from config import (
     MAX_ACTIVE_JOBS,
     MAX_REQUEST_BYTES,
     MAX_URL_LENGTH,
+    METRICS_AUTH_TOKEN,
     RATE_LIMIT_CAPACITY,
     RATE_LIMIT_REFILL_SECONDS,
     SECRET_KEY,
 )
 from database import SessionLocal, engine, init_db
 from models import ACTIVE_JOB_STATUSES, Job, ResourceLease, WorkerHeartbeat
+from platforms import PLATFORM_CONFIG, PLATFORM_ORDER
 from url_validation import detect_platform, is_valid_format_id
 from rate_limit import DatabaseRateLimiter
 
 
-SUPPORTED_PLATFORMS = {'youtube', 'tiktok', 'instagram', 'facebook'}
+SUPPORTED_PLATFORMS = frozenset(PLATFORM_ORDER)
 MAX_BULK_URLS = 10
 CAPACITY_LOCK_KEY = 917342
 logger = logging.getLogger(__name__)
@@ -56,6 +59,7 @@ def create_app(rate_limiter=None):
     app.config.from_mapping(
         SECRET_KEY=SECRET_KEY,
         MAX_CONTENT_LENGTH=MAX_REQUEST_BYTES,
+        METRICS_AUTH_TOKEN=METRICS_AUTH_TOKEN,
     )
     init_db()
     limiter = rate_limiter or DatabaseRateLimiter(
@@ -99,6 +103,8 @@ def create_app(rate_limiter=None):
     def add_security_headers(response):
         if request.path == '/':
             response.headers['Cache-Control'] = 'no-store, max-age=0'
+        elif request.path.startswith('/static/'):
+            response.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
         response.headers.setdefault('X-Content-Type-Options', 'nosniff')
         response.headers.setdefault('X-Frame-Options', 'DENY')
         response.headers.setdefault('Referrer-Policy', 'no-referrer')
@@ -109,7 +115,23 @@ def create_app(rate_limiter=None):
 
     @app.get('/')
     def index():
-        return render_template('pages/home/index.html')
+        return render_template(
+            'pages/home/index.html',
+            platforms=[PLATFORM_CONFIG[key] | {
+                'slug': key} for key in PLATFORM_ORDER],
+        )
+
+    @app.get('/<platform_slug>-video-downloader')
+    def platform_page(platform_slug):
+        if platform_slug not in PLATFORM_CONFIG:
+            abort(404)
+        platform = PLATFORM_CONFIG[platform_slug] | {'slug': platform_slug}
+        return render_template(
+            f'pages/platforms/{platform_slug}.html',
+            platform=platform,
+            platforms=[PLATFORM_CONFIG[key] | {
+                'slug': key} for key in PLATFORM_ORDER],
+        )
 
     @app.get('/privacy')
     def privacy_page():
@@ -118,6 +140,53 @@ def create_app(rate_limiter=None):
     @app.get('/terms')
     def terms_page():
         return render_template('pages/legal/terms.html')
+
+    @app.get('/how-to-download-public-videos')
+    def how_to_download_public_videos():
+        return render_template(
+            'pages/information/how-to-download-public-videos.html',
+            platforms=[PLATFORM_CONFIG[key] | {
+                'slug': key} for key in PLATFORM_ORDER],
+        )
+
+    @app.get('/video-download-quality-and-formats')
+    def video_download_quality_and_formats():
+        return render_template(
+            'pages/information/video-download-quality-and-formats.html',
+            platforms=[PLATFORM_CONFIG[key] | {
+                'slug': key} for key in PLATFORM_ORDER],
+        )
+
+    @app.get('/robots.txt')
+    def robots_txt():
+        site_root = request.url_root.rstrip('/')
+        body = '\n'.join((
+            'User-agent: *',
+            'Allow: /',
+            'Disallow: /health',
+            'Disallow: /metrics',
+            'Disallow: /supported-platforms',
+            f'Sitemap: {site_root}/sitemap.xml',
+            '',
+        ))
+        return Response(body, mimetype='text/plain')
+
+    @app.get('/sitemap.xml')
+    def sitemap_xml():
+        site_root = request.url_root.rstrip('/')
+        body = (
+            '<?xml version="1.0" encoding="UTF-8"?>'
+            '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+            f'<url><loc>{site_root}/</loc></url>'
+            + ''.join(
+                f'<url><loc>{site_root}/{key}-video-downloader</loc></url>'
+                for key in PLATFORM_ORDER
+            )
+            + f'<url><loc>{site_root}/how-to-download-public-videos</loc></url>'
+            + f'<url><loc>{site_root}/video-download-quality-and-formats</loc></url>'
+            '</urlset>'
+        )
+        return Response(body, mimetype='application/xml')
 
     @app.get('/supported-platforms')
     def supported_platforms():
@@ -133,6 +202,17 @@ def create_app(rate_limiter=None):
 
     @app.get('/metrics')
     def metrics():
+        authorization = request.headers.get('Authorization', '')
+        expected = app.config['METRICS_AUTH_TOKEN']
+        if (not expected or not hmac.compare_digest(
+                authorization, f'Bearer {expected}')):
+            response = jsonify({
+                'status': 'error',
+                'message': 'Metrics authorization is required.',
+            })
+            response.status_code = 401
+            response.headers['WWW-Authenticate'] = 'Bearer'
+            return response
         with SessionLocal() as session:
             state_rows = session.execute(
                 select(Job.status, func.count()).group_by(Job.status)

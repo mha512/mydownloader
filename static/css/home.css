@@ -1,0 +1,398 @@
+.main:has(#home) {
+  padding-top: 12px;
+}
+
+.hero {
+  padding: 10px 0 18px;
+}
+
+.hero h1 {
+  margin-top: 0;
+  font-size: clamp(2.1rem, 5vw, 3.8rem);
+}
+
+.hero p {
+  margin-top: 10px;
+}
+
+.platform-row {
+  margin-top: 14px;
+}
+
+.home-card {
+  max-width: 940px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.preview {
+  display: none;
+  margin-top: 22px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface-soft);
+  overflow: hidden;
+}
+
+.preview.show {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+}
+
+.thumb-wrap {
+  background: #071313;
+  min-height: 190px;
+  aspect-ratio: 280 / 190;
+  position: relative;
+}
+
+.thumb-wrap img {
+  width: 100%;
+  height: 100%;
+  min-height: 190px;
+  object-fit: cover;
+  display: block;
+}
+
+.thumb-placeholder {
+  height: 100%;
+  min-height: 190px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+}
+
+.thumb-placeholder svg {
+  width: 48px;
+  height: 48px;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.preview-body {
+  padding: 20px;
+}
+
+.preview-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.35;
+  margin-bottom: 6px;
+}
+
+.preview-meta {
+  color: var(--muted);
+  font-size: 0.76rem;
+  margin-bottom: 17px;
+}
+
+.quality-title {
+  font-size: 0.77rem;
+  font-weight: 800;
+  margin-bottom: 9px;
+}
+
+.qualities {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.quality {
+  min-width: 100px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, background 0.2s ease, color 0.2s ease;
+}
+
+.quality:hover,
+.quality.active {
+  border-color: var(--teal);
+  background: rgba(0, 128, 128, 0.06);
+  color: var(--teal);
+}
+
+.quality:focus-visible,
+.faq summary:focus-visible {
+  outline: 3px solid var(--teal-strong);
+  outline-offset: 3px;
+}
+
+.quality strong {
+  display: block;
+  font-size: 0.8rem;
+}
+
+.quality small {
+  display: block;
+  color: var(--muted);
+  font-size: 0.65rem;
+  margin-top: 2px;
+}
+
+.preview-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 17px;
+}
+
+.download-result {
+  display: none;
+  margin-top: 18px;
+  padding: 17px;
+  border: 1px solid rgba(5, 150, 105, 0.2);
+  border-radius: 15px;
+  background: rgba(5, 150, 105, 0.06);
+}
+
+.download-result.show {
+  display: block;
+}
+
+.download-result p {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 4px 0 12px;
+}
+
+.download-progress {
+  display: none;
+  margin-top: 12px;
+}
+
+.download-progress.show {
+  display: block;
+}
+
+.download-progress.indeterminate .progress-bar {
+  width: 35%;
+  animation: progress-indeterminate 1.4s ease-in-out infinite;
+}
+
+.progress-track {
+  height: 8px;
+  border-radius: 99px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  width: 0;
+  background: linear-gradient(90deg, var(--teal), var(--teal-strong));
+  transition: width 0.2s ease;
+}
+
+.progress-text {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 7px;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.recovery-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+@keyframes progress-indeterminate {
+  from {
+    transform: translateX(-120%);
+  }
+
+  to {
+    transform: translateX(330%);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+.feature {
+  padding: 22px 17px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+}
+
+.feature-icon {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  background: rgba(0, 128, 128, 0.08);
+  margin-bottom: 12px;
+}
+
+.feature-icon svg {
+  width: 23px;
+  height: 23px;
+  stroke: var(--teal);
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.feature h3 {
+  font-size: 0.9rem;
+  margin-bottom: 5px;
+}
+
+.feature p {
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.content-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 24px;
+}
+
+.prose p,
+.prose li {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.faq {
+  display: grid;
+  gap: 9px;
+}
+
+.faq details {
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-soft);
+  padding: 13px 15px;
+}
+
+.faq summary {
+  cursor: pointer;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.faq p {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.ad-slot {
+  min-height: 90px;
+  margin: 22px 0;
+  border: 1px dashed var(--border);
+  border-radius: 14px;
+  background: var(--surface-soft);
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.ad-slot span {
+  opacity: 0.65;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .btn:hover,
+  .theme-toggle:hover,
+  .menu-btn:hover {
+    transform: none;
+  }
+
+  .progress-bar {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@media (max-width: 860px) {
+  .feature-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .preview.show {
+    display: block;
+  }
+
+  .thumb-wrap,
+  .thumb-wrap img,
+  .thumb-placeholder {
+    min-height: 205px;
+    height: 205px;
+  }
+
+  .preview-body {
+    padding: 16px;
+  }
+
+  .quality {
+    flex: 1 1 calc(50% - 8px);
+    min-width: 0;
+  }
+
+  .feature-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 380px) {
+  .quality {
+    flex-basis: 100%;
+  }
+}

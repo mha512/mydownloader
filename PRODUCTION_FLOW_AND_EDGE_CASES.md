@@ -418,7 +418,7 @@ The most important state rule is that only the worker that owns the current atte
 
 4. **Migration operations need deployment discipline.** Alembic migrations exist and are run by both Render services, but production operators should still review migration ordering, backups, and rollback procedures.
 
-5. **SSRF and egress protection are not complete.** The initial hostname allowlist is useful, but yt-dlp can follow redirects and access URLs returned by platforms. Production hosting should restrict worker egress and monitor unusual destinations.
+5. **SSRF and egress protection are not complete.** Initial hostname checks and bounded redirect-hop validation reject private redirect targets before yt-dlp runs, but production hosting should still restrict worker egress and monitor unusual destinations.
 
 6. **Some worker failures remain generic to users.** Logs contain more diagnostic information than the user-facing error message.
 

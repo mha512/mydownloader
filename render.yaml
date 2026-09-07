@@ -12,6 +12,8 @@ services:
           property: connectionString
       - key: VIDZFLOW_SECRET_KEY
         sync: false
+      - key: METRICS_AUTH_TOKEN
+        sync: false
       - key: VIDZFLOW_MAX_REQUEST_BYTES
         value: "65536"
       - key: RATE_LIMIT_CAPACITY

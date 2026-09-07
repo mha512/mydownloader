@@ -13,6 +13,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 import boto3
 import yt_dlp
@@ -43,13 +44,26 @@ from config import (
 )
 from database import SessionLocal, init_db
 from models import ACTIVE_JOB_STATUSES, Job, ResourceLease, WorkerHeartbeat
-from url_validation import has_public_host
+from url_validation import has_public_host, validate_redirect_chain
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s %(levelname)s %(message)s')
 logger = logging.getLogger(__name__)
 RESOURCE_LOCK_KEY = 917345
 WORKER_ID = os.environ.get('WORKER_INSTANCE_ID', uuid.uuid4().hex)
+
+
+def safe_error_text(error, limit=240):
+    text = str(error)
+    parts = text.split()
+    redacted = []
+    for part in parts:
+        if part.startswith(('http://', 'https://')):
+            parsed = urlsplit(part.rstrip('.,);'))
+            part = urlunsplit(
+                (parsed.scheme, parsed.netloc, parsed.path, '', ''))
+        redacted.append(part)
+    return ' '.join(redacted)[:limit]
 
 
 def is_transient_error(error):
@@ -381,6 +395,9 @@ def process_job(job_id):
     try:
         if not has_public_host(source_url):
             raise RuntimeError('The source host is not publicly reachable.')
+        if not validate_redirect_chain(source_url):
+            raise RuntimeError(
+                'The source redirect chain is not publicly reachable.')
         media_tools, _, ffprobe = require_media_tools()
         output_template = str(work_dir / '%(title).120s-%(id)s.%(ext)s')
         last_progress_update = [0.0]
@@ -609,11 +626,14 @@ def process_job(job_id):
         if retry_delay is not None:
             release_resource_lease(job_id)
             logger.warning(
-                'Job %s will retry after %.1f seconds: %s',
-                job_id, retry_delay, error)
+                'Job %s will retry after %.1f seconds (%s): %s',
+                job_id, retry_delay, type(error).__name__,
+                safe_error_text(error))
             time.sleep(retry_delay)
         else:
-            logger.exception('Job %s failed', job_id)
+            logger.error(
+                'Job %s failed (%s): %s', job_id, type(error).__name__,
+                safe_error_text(error))
     finally:
         with SessionLocal.begin() as session:
             session.query(ResourceLease).filter_by(job_id=job_id).delete()

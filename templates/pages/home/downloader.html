@@ -3,23 +3,23 @@
   <h2 class="section-heading" id="download-heading">Paste a video URL</h2>
   <p class="section-copy">Enter a supported public URL. ToxicDownloader will fetch the media details first, then show its thumbnail and available quality options.</p>
 
-  <div class="form-grid">
+  <form class="form-grid" id="downloader-form" novalidate>
     <div class="field">
       <label for="single-url">Video URL</label>
-      <input class="input" id="single-url" type="url" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=..." />
+      <input class="input" id="single-url" type="url" inputmode="url" autocomplete="off" placeholder="https://www.youtube.com/watch?v=..." aria-describedby="status" aria-invalid="false" required />
     </div>
-    <button class="btn" id="fetch-button" type="button">
-      <span id="fetch-spinner" class="spinner" style="display:none"></span>
+    <button class="btn" id="fetch-button" type="submit">
+      <span id="fetch-spinner" class="spinner is-hidden"></span>
       <span id="fetch-text">Fetch Video</span>
     </button>
-  </div>
+  </form>
 
   <div class="meta-copy">Supported: YouTube, TikTok, Instagram and Facebook. Only download content you have permission to use.</div>
   <div id="status" aria-live="polite"></div>
 
   <div class="preview" id="preview">
     <div class="thumb-wrap">
-      <img id="preview-thumb" alt="Video thumbnail preview" style="display:none" />
+      <img id="preview-thumb" class="is-hidden" width="280" height="190" loading="eager" alt="Video thumbnail preview" />
       <div class="thumb-placeholder" id="thumb-placeholder">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m10 8 6 4-6 4V8Z"/><rect x="3" y="5" width="18" height="14" rx="4"/></svg>
       </div>
@@ -36,12 +36,12 @@
       <div class="download-result" id="download-result">
         <strong id="download-result-title">Download started</strong>
         <p id="download-result-text">Your selected file is being downloaded.</p>
-        <div class="download-progress" id="download-progress">
+        <div class="download-progress" id="download-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuetext="Progress is not available yet">
           <div class="progress-track"><div class="progress-bar" id="download-progress-bar"></div></div>
           <div class="progress-text"><span id="download-progress-label">Preparing...</span><span id="download-progress-percent">--</span></div>
         </div>
         <div class="permission-note" id="permission-note"></div>
-        <div class="recovery-actions" id="recovery-actions" style="display:none">
+        <div class="recovery-actions is-hidden" id="recovery-actions">
           <button class="btn secondary" id="retry-button" type="button">Retry</button>
           <button class="btn secondary" id="cancel-button" type="button">Cancel</button>
         </div>

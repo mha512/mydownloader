@@ -3,16 +3,15 @@
 import re
 import ipaddress
 import socket
-from urllib.parse import urlparse
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
+from platforms import PLATFORM_HOSTS
 
-SUPPORTED_HOSTS = {
-    'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be',
-    'instagram.com', 'www.instagram.com',
-    'facebook.com', 'www.facebook.com', 'fb.watch',
-    'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com',
-}
+SUPPORTED_HOSTS = frozenset(PLATFORM_HOSTS)
 FORMAT_ID_PATTERN = re.compile(r'^[A-Za-z0-9._-]{1,64}$')
+MAX_REDIRECTS = 5
 
 
 def is_valid_format_id(value):
@@ -74,6 +73,51 @@ def validate_redirect_target(url):
     return all(_is_public_ip_address(address) for address in addresses)
 
 
+class _NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, msg, headers, newurl):
+        return None
+
+
+def validate_redirect_chain(url, max_redirects=MAX_REDIRECTS, opener=None):
+    """Validate every HTTP redirect target before a downloader follows it."""
+    current_url = url.strip()
+    if not has_public_host(current_url):
+        return False
+    if max_redirects < 0:
+        return False
+
+    redirect_opener = opener or build_opener(_NoRedirectHandler())
+    for redirect_count in range(max_redirects + 1):
+        try:
+            if opener:
+                response = redirect_opener(current_url)
+            else:
+                response = redirect_opener.open(
+                    Request(current_url, headers={'Range': 'bytes=0-0'}),
+                    timeout=10,
+                )
+        except HTTPError as error:
+            response = error
+        except (OSError, ValueError):
+            return False
+
+        try:
+            status = getattr(response, 'status', None)
+            if status is None:
+                status = response.getcode()
+            location = response.headers.get('Location')
+        finally:
+            response.close()
+
+        if status not in {301, 302, 303, 307, 308}:
+            return True
+        if not location or redirect_count == max_redirects:
+            return False
+        current_url = urljoin(current_url, location)
+        if not validate_redirect_target(current_url):
+            return False
+
+
 def detect_platform(url):
     parsed = urlparse(url.strip())
     if parsed.scheme != 'https' or not parsed.hostname:
@@ -82,14 +126,4 @@ def detect_platform(url):
     hostname = parsed.hostname.lower().rstrip('.')
     if parsed.username or parsed.password or parsed.port or parsed.fragment:
         return 'unknown'
-    if hostname not in SUPPORTED_HOSTS:
-        return 'unknown'
-    if hostname in {'youtube.com', 'www.youtube.com', 'm.youtube.com', 'youtu.be'}:
-        return 'youtube'
-    if hostname in {'instagram.com', 'www.instagram.com'}:
-        return 'instagram'
-    if hostname in {'facebook.com', 'www.facebook.com', 'fb.watch'}:
-        return 'facebook'
-    if hostname in {'tiktok.com', 'www.tiktok.com', 'vm.tiktok.com'}:
-        return 'tiktok'
-    return 'unknown'
+    return PLATFORM_HOSTS.get(hostname, 'unknown')

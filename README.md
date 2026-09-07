@@ -121,7 +121,7 @@ Returns the supported platform names.
 
 ### `GET /metrics`
 
-Returns a JSON operational snapshot containing job counts, active resource leases, worker heartbeat age, and temporary disk usage.
+Returns a JSON operational snapshot containing job counts, active resource leases, worker heartbeat age, and temporary disk usage. Requires `Authorization: Bearer <METRICS_AUTH_TOKEN>`.
 
 ### `GET /health`
 
@@ -133,7 +133,7 @@ Checks that the web service can reach the database.
 
 Copy `.env.example` to the environment settings for both Render services and replace every placeholder. Keep the database password, secret key and storage credentials private. Render must provide the same `DATABASE_URL` and `VIDZFLOW_SECRET_KEY` to the web and worker services.
 
-Set `VIDZFLOW_SECRET_KEY` to exactly the same long random value in both services. The web service limits active jobs with `MAX_ACTIVE_JOBS` and anonymous submission bursts with `RATE_LIMIT_CAPACITY` and `RATE_LIMIT_REFILL_SECONDS`. The worker uses bounded `WORKER_CONCURRENCY`, `MAX_CONCURRENT_DOWNLOADS`, and `MAX_TEMP_DISK_BYTES`. Temporary failures retry up to `WORKER_MAX_ATTEMPTS` with `WORKER_RETRY_BACKOFF_SECONDS`. Anonymous job tokens last `VIDZFLOW_JOB_TOKEN_MAX_AGE` seconds and files/jobs are retained for `JOB_RETENTION_SECONDS`.
+Set `VIDZFLOW_SECRET_KEY` to exactly the same long random value in both services. Set `METRICS_AUTH_TOKEN` for operator access to `/metrics`. The web service limits active jobs with `MAX_ACTIVE_JOBS` and anonymous submission bursts with `RATE_LIMIT_CAPACITY` and `RATE_LIMIT_REFILL_SECONDS`. The worker uses bounded `WORKER_CONCURRENCY`, `MAX_CONCURRENT_DOWNLOADS`, and `MAX_TEMP_DISK_BYTES`. Temporary failures retry up to `WORKER_MAX_ATTEMPTS` with `WORKER_RETRY_BACKOFF_SECONDS`. Anonymous job tokens last `VIDZFLOW_JOB_TOKEN_MAX_AGE` seconds and files/jobs are retained for `JOB_RETENTION_SECONDS`.
 
 ---
 
