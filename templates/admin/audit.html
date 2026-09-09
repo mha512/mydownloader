@@ -1,0 +1,38 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Audit Log{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>Audit Log</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    </div>
+  </div>
+
+  <section class="admin-panel">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Actor</th>
+          <th>Action</th>
+          <th>Entity</th>
+          <th>Time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for entry in audit_entries %}
+        <tr>
+          <td>{{ entry.actor }}</td>
+          <td>{{ entry.action }}</td>
+          <td>{{ entry.entity_type }}/{{ entry.entity_id or 'n/a' }}</td>
+          <td>{{ entry.created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

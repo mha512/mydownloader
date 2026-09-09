@@ -86,6 +86,18 @@ RATE_LIMIT_CAPACITY = int(os.environ.get('RATE_LIMIT_CAPACITY', '20'))
 RATE_LIMIT_REFILL_SECONDS = float(
     os.environ.get('RATE_LIMIT_REFILL_SECONDS', '60')
 )
+ADMIN_USERNAME = os.environ.get('ADMIN_USERNAME', 'admin')
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', 'admin123')
+ADMIN_SESSION_TTL = int(os.environ.get('ADMIN_SESSION_TTL', '86400'))
+
+if IS_PRODUCTION and (
+    not ADMIN_USERNAME or not ADMIN_PASSWORD or
+    ADMIN_USERNAME in {'admin', 'root'} or len(ADMIN_PASSWORD) < 12
+):
+    raise RuntimeError(
+        'Production admin credentials must be set with strong ADMIN_USERNAME '
+        'and ADMIN_PASSWORD environment variables.'
+    )
 
 
 def parse_size(value):

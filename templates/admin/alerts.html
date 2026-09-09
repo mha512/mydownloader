@@ -1,0 +1,38 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Alerts{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>Alerts</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    </div>
+  </div>
+
+  <section class="admin-panel">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Job</th>
+          <th>Platform</th>
+          <th>Status</th>
+          <th>Updated</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td>{{ job.id[:12] }}</td>
+          <td>{{ job.platform }}</td>
+          <td>{{ job.status }}</td>
+          <td>{{ job.updated_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

@@ -1,0 +1,23 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Settings{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>System Settings</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    </div>
+  </div>
+
+  <section class="admin-panel">
+    <ul class="compact-list">
+      {% for key, value in settings.items() %}
+      <li><span>{{ key }}</span><strong>{{ value }}</strong></li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+{% endblock %}

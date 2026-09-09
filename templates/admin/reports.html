@@ -1,0 +1,42 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Operational Reports{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>Operational Reports</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    </div>
+  </div>
+
+  <div class="stats-grid">
+    <div class="stat-card info">
+      <span>Total jobs</span>
+      <strong>{{ total_jobs }}</strong>
+    </div>
+  </div>
+
+  <div class="panel-grid">
+    <section class="admin-panel">
+      <h2>Job summaries</h2>
+      <ul class="compact-list">
+        {% for status, count in state_rows %}
+        <li><span>{{ status }}</span><strong>{{ count }}</strong></li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="admin-panel">
+      <h2>Recent activity</h2>
+      <ul class="compact-list">
+        {% for job in recent %}
+        <li><span>{{ job.platform }}</span><strong>{{ job.status }}</strong></li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+</div>
+{% endblock %}

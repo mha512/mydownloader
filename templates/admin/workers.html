@@ -1,0 +1,38 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Workers{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>Workers</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+    </div>
+  </div>
+
+  <section class="admin-panel">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>Worker ID</th>
+          <th>Last Heartbeat</th>
+          <th>Age</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in workers %}
+        <tr>
+          <td>{{ item.worker.worker_id }}</td>
+          <td>{{ item.worker.heartbeat_at }}</td>
+          <td>{{ item.age_seconds }}s</td>
+          <td>{{ 'Stale' if item.is_stale else 'Healthy' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

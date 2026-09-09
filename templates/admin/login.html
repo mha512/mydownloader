@@ -1,0 +1,34 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Login{% endblock %}
+{% block meta_description %}Secure admin login for VidzFlow operations.{% endblock %}
+
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-auth-card">
+    <div class="admin-auth-header">
+      <p class="eyebrow">Operator Access</p>
+      <h1>Admin Login</h1>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="status-box {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="post" action="{{ url_for('admin_sign_in') }}" class="admin-form">
+      <label>
+        Username
+        <input type="text" name="username" value="admin" required />
+      </label>
+      <label>
+        Password
+        <input type="password" name="password" required />
+      </label>
+      <button type="submit" class="button button-primary">Sign In</button>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,57 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Job Details{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Job details</p>
+      <h1>{{ job.id }}</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_jobs') }}">Back to jobs</a>
+    </div>
+  </div>
+
+  <div class="panel-grid">
+    <section class="admin-panel">
+      <h2>Metadata</h2>
+      <ul class="compact-list">
+        <li><span>Platform</span><strong>{{ job.platform }}</strong></li>
+        <li><span>Status</span><strong>{{ job.status }}</strong></li>
+        <li><span>Created</span><strong>{{ job.created_at }}</strong></li>
+        <li><span>Updated</span><strong>{{ job.updated_at }}</strong></li>
+        <li><span>Attempts</span><strong>{{ job.attempts }}</strong></li>
+      </ul>
+    </section>
+
+    <section class="admin-panel">
+      <h2>Actions</h2>
+      <form method="post" action="{{ url_for('admin_job_retry', job_id=job.id) }}">
+        <button type="submit" class="button button-primary">Retry Job</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_job_cancel', job_id=job.id) }}">
+        <button type="submit" class="button button-warning">Cancel Job</button>
+      </form>
+      <form method="post" action="{{ url_for('admin_job_delete', job_id=job.id) }}">
+        <button type="submit" class="button button-danger">Delete Job</button>
+      </form>
+    </section>
+  </div>
+
+  <section class="admin-panel">
+    <h2>Source URL</h2>
+    <p>{{ job.source_url }}</p>
+  </section>
+
+  <section class="admin-panel">
+    <h2>Download state</h2>
+    <ul class="compact-list">
+      <li><span>File name</span><strong>{{ job.filename or 'n/a' }}</strong></li>
+      <li><span>Selected format</span><strong>{{ job.selected_format or 'n/a' }}</strong></li>
+      <li><span>Title</span><strong>{{ job.title or 'n/a' }}</strong></li>
+      <li><span>Progress</span><strong>{{ job.progress }}%</strong></li>
+      <li><span>Error</span><strong>{{ job.error_message or 'none' }}</strong></li>
+    </ul>
+  </section>
+</div>
+{% endblock %}

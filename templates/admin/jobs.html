@@ -1,0 +1,58 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Jobs{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>Jobs</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_dashboard') }}">Dashboard</a>
+      <a class="button button-secondary" href="{{ url_for('admin_workers') }}">Workers</a>
+    </div>
+  </div>
+
+  <form method="get" class="admin-toolbar">
+    <input type="text" name="q" value="{{ search_term }}" placeholder="Search by id, platform, url" />
+    <select name="status">
+      <option value="all" {% if status_filter == 'all' %}selected{% endif %}>All statuses</option>
+      <option value="queued" {% if status_filter == 'queued' %}selected{% endif %}>Queued</option>
+      <option value="preview" {% if status_filter == 'preview' %}selected{% endif %}>Preview</option>
+      <option value="awaiting_format" {% if status_filter == 'awaiting_format' %}selected{% endif %}>Awaiting format</option>
+      <option value="ready" {% if status_filter == 'ready' %}selected{% endif %}>Ready</option>
+      <option value="failed" {% if status_filter == 'failed' %}selected{% endif %}>Failed</option>
+    </select>
+    <button type="submit" class="button button-primary">Filter</button>
+  </form>
+
+  <section class="admin-panel">
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Platform</th>
+          <th>Status</th>
+          <th>Created</th>
+          <th>Attempts</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td><a href="{{ url_for('admin_job_detail', job_id=job.id) }}">{{ job.id[:12] }}</a></td>
+          <td>{{ job.platform }}</td>
+          <td>{{ job.status }}</td>
+          <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+          <td>{{ job.attempts }}</td>
+          <td>
+            <a class="small-link" href="{{ url_for('admin_job_detail', job_id=job.id) }}">Open</a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

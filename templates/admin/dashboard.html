@@ -1,0 +1,100 @@
+{% extends 'layouts/base.html' %}
+{% block title %}Admin Dashboard{% endblock %}
+{% block content %}
+<div class="container admin-shell">
+  <div class="admin-header-row">
+    <div>
+      <p class="eyebrow">Operations</p>
+      <h1>Admin Dashboard</h1>
+    </div>
+    <div class="admin-header-actions">
+      <a class="button button-secondary" href="{{ url_for('admin_jobs') }}">Jobs</a>
+      <a class="button button-secondary" href="{{ url_for('admin_workers') }}">Workers</a>
+      <a class="button button-secondary" href="{{ url_for('admin_settings') }}">Settings</a>
+      <a class="button button-danger" href="{{ url_for('admin_logout') }}">Logout</a>
+    </div>
+  </div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      {% for category, message in messages %}
+        <div class="status-box {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+  {% endwith %}
+
+  <div class="stats-grid">
+    <div class="stat-card">
+      <span>Total Jobs</span>
+      <strong>{{ summary.total_jobs }}</strong>
+    </div>
+    <div class="stat-card success">
+      <span>Ready</span>
+      <strong>{{ summary.ready_jobs }}</strong>
+    </div>
+    <div class="stat-card warning">
+      <span>Queued</span>
+      <strong>{{ summary.queued_jobs }}</strong>
+    </div>
+    <div class="stat-card danger">
+      <span>Failed</span>
+      <strong>{{ summary.failed_jobs }}</strong>
+    </div>
+    <div class="stat-card info">
+      <span>Active Jobs</span>
+      <strong>{{ summary.active_jobs }}</strong>
+    </div>
+    <div class="stat-card">
+      <span>Workers</span>
+      <strong>{{ summary.worker_count }}</strong>
+    </div>
+  </div>
+
+  <div class="panel-grid">
+    <section class="admin-panel">
+      <h2>Job Status</h2>
+      <ul class="compact-list">
+        {% for status, count in metrics.items() %}
+          <li><span>{{ status }}</span><strong>{{ count }}</strong></li>
+        {% endfor %}
+      </ul>
+    </section>
+
+    <section class="admin-panel">
+      <h2>Operational Health</h2>
+      <ul class="compact-list">
+        <li><span>Stale workers</span><strong>{{ summary.stale_workers }}</strong></li>
+        <li><span>Recent failures</span><strong>{{ summary.failed_jobs }}</strong></li>
+        <li><span>System load</span><strong>{{ summary.active_jobs }}/{{ summary.total_jobs }}</strong></li>
+      </ul>
+    </section>
+  </div>
+
+  <section class="admin-panel">
+    <div class="panel-header">
+      <h2>Recent Jobs</h2>
+      <a href="{{ url_for('admin_jobs') }}">View all</a>
+    </div>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Platform</th>
+          <th>Status</th>
+          <th>Created</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for job in recent_jobs %}
+        <tr>
+          <td><a href="{{ url_for('admin_job_detail', job_id=job.id) }}">{{ job.id[:12] }}</a></td>
+          <td>{{ job.platform }}</td>
+          <td>{{ job.status }}</td>
+          <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% endblock %}

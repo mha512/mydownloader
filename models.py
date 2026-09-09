@@ -77,3 +77,42 @@ class RateLimitBucket(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+
+
+class AdminUser(Base):
+    __tablename__ = 'admin_users'
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    username: Mapped[str] = mapped_column(
+        String(128), unique=True, nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    role: Mapped[str] = mapped_column(
+        String(32), nullable=False, default='super_admin')
+    is_active: Mapped[bool] = mapped_column(default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
+    last_login_at: Mapped[Optional[datetime]
+                          ] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc), nullable=False,
+    )
+
+
+class AdminAuditLog(Base):
+    __tablename__ = 'admin_audit_logs'
+
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    actor: Mapped[str] = mapped_column(
+        String(128), nullable=False, default='system')
+    action: Mapped[str] = mapped_column(String(128), nullable=False)
+    entity_type: Mapped[str] = mapped_column(
+        String(64), nullable=False, default='system')
+    entity_id: Mapped[Optional[str]] = mapped_column(String(128))
+    details: Mapped[Optional[str]] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        nullable=False,
+    )
