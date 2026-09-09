@@ -2,7 +2,6 @@
 
 A scalable Flask web service with a separate Render worker, PostgreSQL job queue and S3-compatible private file storage. Users do not need accounts.
 
-**Made with ❤️ by Soham Roy Chowdhury**
 
 ---
 
@@ -237,4 +236,4 @@ Please make sure you:
 
 ---
 
-**Made with ❤️ by Soham Roy Chowdhury**
+Developed By **M Hashaam Ahmad**
