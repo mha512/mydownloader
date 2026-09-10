@@ -81,6 +81,8 @@ def is_transient_error(error):
             'http error 403', 'http error 429', 'http error 500',
             'http error 502', 'http error 503', 'http error 504',
             'timed out', 'temporarily unavailable', 'connection reset',
+            'unable to extract universal data',
+            'unexpected response from webpage request',
         ))
     return False
 
@@ -140,6 +142,15 @@ def extractor_args_for_platform(platform):
             'tiktok': {
                 'app_info': ['musical_ly/35.1.3/2023501030/0'],
             },
+        }
+    return {}
+
+
+def yt_dlp_options_for_platform(platform):
+    if platform == 'tiktok':
+        return {
+            'extractor_args': extractor_args_for_platform(platform),
+            'extractor_retries': 3,
         }
     return {}
 
@@ -402,6 +413,7 @@ def process_job(job_id):
         selected_format = job.selected_format
 
     work_dir = Path(tempfile.mkdtemp(prefix=f'vidzflow-{job_id}-'))
+    job_stage = 'initializing'
     try:
         if not has_public_host(source_url):
             raise RuntimeError('The source host is not publicly reachable.')
@@ -425,6 +437,7 @@ def process_job(job_id):
                 if total_bytes is not None:
                     job.total_bytes = total_bytes
 
+        job_stage = 'extracting metadata'
         update_job('extracting', 1)
 
         def progress_hook(event):
@@ -456,7 +469,7 @@ def process_job(job_id):
             'noplaylist': True,
             'socket_timeout': WORKER_JOB_TIMEOUT_SECONDS,
             'ffmpeg_location': str(media_tools),
-            'extractor_args': extractor_args_for_platform(platform),
+            **yt_dlp_options_for_platform(platform),
         }) as downloader:
             info = downloader.extract_info(source_url, download=False)
 
@@ -534,13 +547,14 @@ def process_job(job_id):
             'max_filesize': MAX_DOWNLOAD_BYTES,
             'socket_timeout': WORKER_JOB_TIMEOUT_SECONDS,
             'ffmpeg_location': str(media_tools),
-            'extractor_args': extractor_args_for_platform(platform),
+            **yt_dlp_options_for_platform(platform),
             'progress_hooks': [progress_hook],
             'postprocessors': [{
                 'key': 'FFmpegVideoConvertor',
                 'preferedformat': 'mp4',
             }],
         }
+        job_stage = 'downloading selected format'
         with yt_dlp.YoutubeDL(options) as downloader:
             info = downloader.extract_info(source_url, download=True)
 
@@ -556,6 +570,7 @@ def process_job(job_id):
         normalized_file = work_dir / 'vidzflow-normalized.mp4'
         update_job('converting', 75)
 
+        job_stage = 'converting with ffmpeg'
         normalize = subprocess.run(
             [
                 str(media_tools / ('ffmpeg.exe' if os.name == 'nt' else 'ffmpeg')),
@@ -576,6 +591,7 @@ def process_job(job_id):
         if source_file.stat().st_size > MAX_DOWNLOAD_BYTES:
             raise RuntimeError('The converted file exceeds the size limit')
         update_job('checking', 90)
+        job_stage = 'checking converted file'
         probe = subprocess.run(
             [
                 str(ffprobe), '-v', 'error', '-select_streams', 'v:0',
@@ -591,6 +607,7 @@ def process_job(job_id):
             raise RuntimeError('The worker produced an unreadable video')
         filename = f'{uuid.uuid4().hex}-{source_file.name}'
         object_key = f'jobs/{job_id}/{filename}'
+        job_stage = 'uploading to storage'
         client = storage_client()
         content_type = mimetypes.guess_type(source_file.name)[
             0] or 'application/octet-stream'
@@ -634,6 +651,10 @@ def process_job(job_id):
             raise
         logger.info('Completed job %s (%s)', job_id, platform)
     except Exception as error:
+        logger.exception(
+            'Job %s failed at stage %s (%s): %s',
+            job_id, job_stage, platform, safe_error_text(error),
+        )
         retry_delay = record_job_failure(job_id, error)
         if retry_delay is not None:
             release_resource_lease(job_id)
@@ -644,8 +665,9 @@ def process_job(job_id):
             time.sleep(retry_delay)
         else:
             logger.error(
-                'Job %s failed (%s): %s', job_id, type(error).__name__,
-                safe_error_text(error))
+                'Job %s marked failed after stage %s (%s).',
+                job_id, job_stage, platform,
+            )
     finally:
         with SessionLocal.begin() as session:
             session.query(ResourceLease).filter_by(job_id=job_id).delete()
