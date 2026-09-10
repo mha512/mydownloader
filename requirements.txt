@@ -5,6 +5,7 @@ SQLAlchemy>=2.0,<3
 psycopg[binary]>=3.2,<4
 boto3>=1.35,<2
 yt-dlp>=2024.12
+curl-cffi>=0.16,<1
 gunicorn>=23,<24
 python-dotenv>=1.0,<2
 alembic>=1.14,<2

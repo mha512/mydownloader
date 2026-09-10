@@ -134,6 +134,16 @@ class DownloadSizeExceeded(RuntimeError):
     """Raised before downloading when media cannot fit the configured limit."""
 
 
+def extractor_args_for_platform(platform):
+    if platform == 'tiktok':
+        return {
+            'tiktok': {
+                'app_info': ['musical_ly/35.1.3/2023501030/0'],
+            },
+        }
+    return {}
+
+
 def format_bytes(byte_count):
     value = float(byte_count)
     for unit in ('B', 'KB', 'MB', 'GB'):
@@ -446,6 +456,7 @@ def process_job(job_id):
             'noplaylist': True,
             'socket_timeout': WORKER_JOB_TIMEOUT_SECONDS,
             'ffmpeg_location': str(media_tools),
+            'extractor_args': extractor_args_for_platform(platform),
         }) as downloader:
             info = downloader.extract_info(source_url, download=False)
 
@@ -523,6 +534,7 @@ def process_job(job_id):
             'max_filesize': MAX_DOWNLOAD_BYTES,
             'socket_timeout': WORKER_JOB_TIMEOUT_SECONDS,
             'ffmpeg_location': str(media_tools),
+            'extractor_args': extractor_args_for_platform(platform),
             'progress_hooks': [progress_hook],
             'postprocessors': [{
                 'key': 'FFmpegVideoConvertor',
