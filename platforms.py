@@ -35,7 +35,7 @@ PLATFORM_CONFIG = {
     },
     'tiktok': {
         'name': 'TikTok',
-        'hosts': ('tiktok.com', 'www.tiktok.com', 'vm.tiktok.com'),
+        'hosts': ('tiktok.com', 'www.tiktok.com', 'vm.tiktok.com', 'vt.tiktok.com'),
         'url_example': 'https://www.tiktok.com/@creator/video/VIDEO_ID',
         'not_supported_example': 'A private TikTok video or a link that requires account access',
         'limitation': 'The smoke test completed extraction for a public TikTok URL. TikTok can occasionally require additional source-side verification that interrupts automated extraction, so public, login-free availability may be more sensitive to extractor or source changes; private, region-restricted, DRM-protected, or removed videos may fail where supported by the current extractor.',
